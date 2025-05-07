@@ -171,7 +171,7 @@ poudre_profile <- poudre_profile |>
 
 elev_plot <- ggplot(poudre_profile, aes(x = ID, y = dem_m)) +
   geom_line(color = "blue", linewidth = 1) +
-  labs(title = "Cache la Poudre River Elevation Profile",
+  labs(title = "Poudre River Elevation Profile",
        x = "Distance Along River (Point ID)",
        y = "Elevation (m)") +
   theme_minimal() +
@@ -188,8 +188,7 @@ Create a spatial map of the river colored by elevation.
 elev_map <- ggplot() +
   geom_sf(data = poudre_profile, aes(color = dem_m)) +
   scale_color_viridis_c(name = "Elevation (m)") +
-  labs(title = "Cache la Poudre River Elevation Map",
-       subtitle = "Fort Collins, CO") +
+  labs(title = "Poudre River Elevation Map") +
   theme_minimal() +
   theme(plot.title = element_text(hjust = 0.5, face = "bold"),
         plot.subtitle = element_text(hjust = 0.5))
