@@ -1,0 +1,198 @@
+---
+title: "exercise_27-28_csu"
+author: "Cameron McLaughlin"
+date: "2025-05-07"
+format: html
+execute:
+  echo: true
+---
+
+## Introduction
+
+# Cache la Poudre River
+
+
+## libraries.
+
+```{r}
+# libraries
+library(sf)
+library(osmdata)
+library(dplyr)
+library(ggplot2)
+library(terra)
+library(AOI)
+```
+
+## 1. Extract Rivers from OpenStreetMap
+
+Fort Collins boundary and extract all waterways
+
+```{r}
+#Fort Collins boundary
+
+#Fort Collins boundary
+fc <- AOI::geocode("Fort Collins", bbox = TRUE) |>
+  st_union() |>
+  st_as_sf()
+
+#waterways from openstreetmap
+foco_rivers <- osmdata::opq(st_bbox(st_transform(fc, 4326))) |> 
+  add_osm_feature("waterway") |> 
+  osmdata_sf()
+
+```
+
+## 1. Filter for poudre
+
+Filter for Poudre and merge the lines into single line object
+
+```{r}
+# Filter for Cache la Poudre River and merge lines
+poudre_river <- foco_rivers$osm_lines |>
+  filter(grepl("Cache la Poudre|Poudre", name, ignore.case = TRUE)) |>
+  st_union() |>
+  st_as_sf()
+```
+
+## 2. Calc River Length
+
+Use `st_length()` to calc the length of the poudre
+
+```{r}
+# Project river to UTM zone (e.g., EPSG:26913)
+poudre_river_proj <- st_transform(poudre_river, 26913)
+
+# Calculate river length in meters
+river_length <- st_length(poudre_river_proj)
+print(river_length)
+```
+
+## 3. River line to Points
+
+Convert river line to POINT object
+
+```{r}
+# Convert river to points
+poudre_pts <- st_cast(poudre_river_proj, "POINT")
+```
+
+## 4. Define DEM
+
+Read the DEM file
+
+```{r}
+#Read DEM
+#VSI-prefixed URL
+url <- 'https://raw.githubusercontent.com/mikejohnson51/csu-ess-330/refs/heads/main/resources/foco-elev-cm.tif'
+vsi_url <- paste0('/vsicurl/', url)
+
+# Read raster data
+elev_rast <- rast(vsi_url)
+
+#values into data frame
+elev_df <- values(elev_rast, dataframe = TRUE)
+colnames(elev_df) <- "elevation_cm"
+```
+
+## 5/6 Extract River Profile
+
+Extract the elevation values from the DEM at the points along the river.
+
+```{r}
+#take elev values from raster at the river points
+poudre_pts2 <- st_transform(poudre_pts, crs(elev_rast))
+
+# Extract elevation values from DEM
+elevation_values <- terra::extract(elev_rast, poudre_pts2)
+
+# Combine river points and elevation, then remove rows with NA elevation
+poudre_profile <- bind_cols(poudre_pts, elevation_values) |>
+  filter(!is.na(dem))
+```
+
+
+
+## 7. Add ID Column
+
+Add ID column
+
+```{r}
+# Add ID column
+poudre_profile <- poudre_profile |>
+  mutate(ID = 1:n())
+```
+
+## 8-9 Sinuosity
+
+Calculate the sinuosity of the river by dividing the length by the straight-line distance.
+
+```{r}
+#calc straight-line distance between first and last points
+start_point <- poudre_pts[1,]
+end_point <- poudre_pts[nrow(poudre_pts),]
+straight_line_dist <- st_distance(start_point, end_point)
+
+#calc sinuosity (river length / straight-line distance)
+sinuosity <- as.numeric(river_length / straight_line_dist)
+print(sinuosity)
+```
+
+### Interpretation of Sinuosity
+
+Interpretation: Sinuosity is measure that can indicate straight or curviness of rivers. A value greater than 1.5 will indicate a winding river, and values closer to 1 indicates a straighter river. Our value, 18.18 represents that our section of the Poudre is very straight. This value makes sense due to straightening of the channel due to urbanization in Fort Collins, but I would not expect this to represent the whole Poudre River.
+
+
+## 10. Compute Slope
+
+Calc slope of river
+
+```{r}
+#convert cm to m for elev
+start_elev <- poudre_profile$dem[poudre_profile$ID == 1] / 100
+end_elev <- poudre_profile$dem[poudre_profile$ID == max(poudre_profile$ID)] / 100
+elev_change <- start_elev - end_elev
+
+slope <- elev_change / as.numeric(river_length)
+print(slope)
+
+```
+The slope is -0.0003m elevation over 1-m river length. 
+
+
+## 11. Line Plot of River Profile
+
+Create a line plot of the elevation values along the river.
+
+```{r}
+# Convert elevation from cm to meters
+poudre_profile <- poudre_profile |>
+  mutate(dem_m = dem / 100)
+
+elev_plot <- ggplot(poudre_profile, aes(x = ID, y = dem_m)) +
+  geom_line(color = "blue", linewidth = 1) +
+  labs(title = "Cache la Poudre River Elevation Profile",
+       x = "Distance Along River (Point ID)",
+       y = "Elevation (m)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+print(elev_plot)
+```
+
+## 12. Spatial Map of River
+
+Create a spatial map of the river colored by elevation.
+
+```{r}
+elev_map <- ggplot() +
+  geom_sf(data = poudre_profile, aes(color = dem_m)) +
+  scale_color_viridis_c(name = "Elevation (m)") +
+  labs(title = "Cache la Poudre River Elevation Map",
+       subtitle = "Fort Collins, CO") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5))
+
+print(elev_map)
+```

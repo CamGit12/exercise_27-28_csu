@@ -1,0 +1,86 @@
+[
+  {
+    "objectID": "exercise_27-28_csu.html#libraries.",
+    "href": "exercise_27-28_csu.html#libraries.",
+    "title": "exercise_27-28_csu",
+    "section": "libraries.",
+    "text": "libraries.\n\n# libraries\nlibrary(sf)\n\nWarning: package 'sf' was built under R version 4.4.3\n\n\nLinking to GEOS 3.13.0, GDAL 3.10.1, PROJ 9.5.1; sf_use_s2() is TRUE\n\nlibrary(osmdata)\n\nWarning: package 'osmdata' was built under R version 4.4.3\n\n\nData (c) OpenStreetMap contributors, ODbL 1.0. https://www.openstreetmap.org/copyright\n\nlibrary(dplyr)\n\nWarning: package 'dplyr' was built under R version 4.4.2\n\n\n\nAttaching package: 'dplyr'\n\n\nThe following objects are masked from 'package:stats':\n\n    filter, lag\n\n\nThe following objects are masked from 'package:base':\n\n    intersect, setdiff, setequal, union\n\nlibrary(ggplot2)\nlibrary(terra)\n\nWarning: package 'terra' was built under R version 4.4.3\n\n\nterra 1.8.42\n\nlibrary(AOI)"
+  },
+  {
+    "objectID": "exercise_27-28_csu.html#extract-rivers-from-openstreetmap",
+    "href": "exercise_27-28_csu.html#extract-rivers-from-openstreetmap",
+    "title": "exercise_27-28_csu",
+    "section": "1. Extract Rivers from OpenStreetMap",
+    "text": "1. Extract Rivers from OpenStreetMap\nFort Collins boundary and extract all waterways\n\n#Fort Collins boundary\n\n#Fort Collins boundary\nfc &lt;- AOI::geocode(\"Fort Collins\", bbox = TRUE) |&gt;\n  st_union() |&gt;\n  st_as_sf()\n\n#waterways from openstreetmap\nfoco_rivers &lt;- osmdata::opq(st_bbox(st_transform(fc, 4326))) |&gt; \n  add_osm_feature(\"waterway\") |&gt; \n  osmdata_sf()"
+  },
+  {
+    "objectID": "exercise_27-28_csu.html#filter-for-poudre",
+    "href": "exercise_27-28_csu.html#filter-for-poudre",
+    "title": "exercise_27-28_csu",
+    "section": "1. Filter for poudre",
+    "text": "1. Filter for poudre\nFilter for Poudre and merge the lines into single line object\n\n# Filter for Cache la Poudre River and merge lines\npoudre_river &lt;- foco_rivers$osm_lines |&gt;\n  filter(grepl(\"Cache la Poudre|Poudre\", name, ignore.case = TRUE)) |&gt;\n  st_union() |&gt;\n  st_as_sf()"
+  },
+  {
+    "objectID": "exercise_27-28_csu.html#calc-river-length",
+    "href": "exercise_27-28_csu.html#calc-river-length",
+    "title": "exercise_27-28_csu",
+    "section": "2. Calc River Length",
+    "text": "2. Calc River Length\nUse st_length() to calc the length of the poudre\n\n# Project river to UTM zone (e.g., EPSG:26913)\npoudre_river_proj &lt;- st_transform(poudre_river, 26913)\n\n# Calculate river length in meters\nriver_length &lt;- st_length(poudre_river_proj)\nprint(river_length)\n\n243300.1 [m]"
+  },
+  {
+    "objectID": "exercise_27-28_csu.html#river-line-to-points",
+    "href": "exercise_27-28_csu.html#river-line-to-points",
+    "title": "exercise_27-28_csu",
+    "section": "3. River line to Points",
+    "text": "3. River line to Points\nConvert river line to POINT object\n\n# Convert river to points\npoudre_pts &lt;- st_cast(poudre_river_proj, \"POINT\")"
+  },
+  {
+    "objectID": "exercise_27-28_csu.html#define-dem",
+    "href": "exercise_27-28_csu.html#define-dem",
+    "title": "exercise_27-28_csu",
+    "section": "4. Define DEM",
+    "text": "4. Define DEM\nRead the DEM file\n\n#Read DEM\n#VSI-prefixed URL\nurl &lt;- 'https://raw.githubusercontent.com/mikejohnson51/csu-ess-330/refs/heads/main/resources/foco-elev-cm.tif'\nvsi_url &lt;- paste0('/vsicurl/', url)\n\n# Read raster data\nelev_rast &lt;- rast(vsi_url)\n\n#values into data frame\nelev_df &lt;- values(elev_rast, dataframe = TRUE)\ncolnames(elev_df) &lt;- \"elevation_cm\""
+  },
+  {
+    "objectID": "exercise_27-28_csu.html#extract-river-profile",
+    "href": "exercise_27-28_csu.html#extract-river-profile",
+    "title": "exercise_27-28_csu",
+    "section": "5/6 Extract River Profile",
+    "text": "5/6 Extract River Profile\nExtract the elevation values from the DEM at the points along the river.\n\n#take elev values from raster at the river points\npoudre_pts2 &lt;- st_transform(poudre_pts, crs(elev_rast))\n\n# Extract elevation values from DEM\nelevation_values &lt;- terra::extract(elev_rast, poudre_pts2)\n\n# Combine river points and elevation, then remove rows with NA elevation\npoudre_profile &lt;- bind_cols(poudre_pts, elevation_values) |&gt;\n  filter(!is.na(dem))"
+  },
+  {
+    "objectID": "exercise_27-28_csu.html#add-id-column",
+    "href": "exercise_27-28_csu.html#add-id-column",
+    "title": "exercise_27-28_csu",
+    "section": "7. Add ID Column",
+    "text": "7. Add ID Column\nAdd ID column\n\n# Add ID column\npoudre_profile &lt;- poudre_profile |&gt;\n  mutate(ID = 1:n())"
+  },
+  {
+    "objectID": "exercise_27-28_csu.html#sinuosity",
+    "href": "exercise_27-28_csu.html#sinuosity",
+    "title": "exercise_27-28_csu",
+    "section": "8-9 Sinuosity",
+    "text": "8-9 Sinuosity\nCalculate the sinuosity of the river by dividing the length by the straight-line distance.\n\n#calc straight-line distance between first and last points\nstart_point &lt;- poudre_pts[1,]\nend_point &lt;- poudre_pts[nrow(poudre_pts),]\nstraight_line_dist &lt;- st_distance(start_point, end_point)\n\n#calc sinuosity (river length / straight-line distance)\nsinuosity &lt;- as.numeric(river_length / straight_line_dist)\nprint(sinuosity)\n\n[1] 18.21781\n\n\n\nInterpretation of Sinuosity\nInterpretation: Sinuosity is measure that can indicate straight or curviness of rivers. A value greater than 1.5 will indicate a winding river, and values closer to 1 indicates a straighter river. Our value, 18.18 represents that our section of the Poudre is very straight. This value makes sense due to straightening of the channel due to urbanization in Fort Collins, but I would not expect this to represent the whole Poudre River."
+  },
+  {
+    "objectID": "exercise_27-28_csu.html#compute-slope",
+    "href": "exercise_27-28_csu.html#compute-slope",
+    "title": "exercise_27-28_csu",
+    "section": "10. Compute Slope",
+    "text": "10. Compute Slope\nCalc slope of river\n\n#convert cm to m for elev\nstart_elev &lt;- poudre_profile$dem[poudre_profile$ID == 1] / 100\nend_elev &lt;- poudre_profile$dem[poudre_profile$ID == max(poudre_profile$ID)] / 100\nelev_change &lt;- start_elev - end_elev\n\nslope &lt;- elev_change / as.numeric(river_length)\nprint(slope)\n\n[1] -0.0003979448\n\n\nThe slope is -0.0003m elevation over 1-m river length."
+  },
+  {
+    "objectID": "exercise_27-28_csu.html#line-plot-of-river-profile",
+    "href": "exercise_27-28_csu.html#line-plot-of-river-profile",
+    "title": "exercise_27-28_csu",
+    "section": "11. Line Plot of River Profile",
+    "text": "11. Line Plot of River Profile\nCreate a line plot of the elevation values along the river.\n\n# Convert elevation from cm to meters\npoudre_profile &lt;- poudre_profile |&gt;\n  mutate(dem_m = dem / 100)\n\nelev_plot &lt;- ggplot(poudre_profile, aes(x = ID, y = dem_m)) +\n  geom_line(color = \"blue\", linewidth = 1) +\n  labs(title = \"Cache la Poudre River Elevation Profile\",\n       x = \"Distance Along River (Point ID)\",\n       y = \"Elevation (m)\") +\n  theme_minimal() +\n  theme(plot.title = element_text(hjust = 0.5, face = \"bold\"))\n\nprint(elev_plot)"
+  },
+  {
+    "objectID": "exercise_27-28_csu.html#spatial-map-of-river",
+    "href": "exercise_27-28_csu.html#spatial-map-of-river",
+    "title": "exercise_27-28_csu",
+    "section": "12. Spatial Map of River",
+    "text": "12. Spatial Map of River\nCreate a spatial map of the river colored by elevation.\n\nelev_map &lt;- ggplot() +\n  geom_sf(data = poudre_profile, aes(color = dem_m)) +\n  scale_color_viridis_c(name = \"Elevation (m)\") +\n  labs(title = \"Cache la Poudre River Elevation Map\",\n       subtitle = \"Fort Collins, CO\") +\n  theme_minimal() +\n  theme(plot.title = element_text(hjust = 0.5, face = \"bold\"),\n        plot.subtitle = element_text(hjust = 0.5))\n\nprint(elev_map)"
+  }
+]
